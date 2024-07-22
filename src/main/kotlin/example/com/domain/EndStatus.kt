@@ -1,7 +1,12 @@
 package example.com.domain
 
-sealed class EndStatus {
-    data class Win(val player: Player): EndStatus()
+import kotlinx.serialization.Serializable
 
+@Serializable
+sealed class EndStatus {
+    @Serializable
+    data class Win(val cellType: CellType): EndStatus()
+
+    @Serializable
     data object Draw: EndStatus()
 }
