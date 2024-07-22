@@ -1,7 +1,6 @@
 package example.com.data
 
 import example.com.domain.*
-import kotlin.random.Random
 
 fun randomType(): CellType {
     val randomInt = (0..1).random()
@@ -9,7 +8,7 @@ fun randomType(): CellType {
 }
 
 fun createGame(): Game {
-    val row = listOf(Cell(null), Cell(null), Cell(null),)
+    val row = listOf(Cell(CellType.Nought), Cell(null), Cell(null),)
     val grid = listOf(row, row, row)
     val turn = Turn(
         playerId = (0..1).random().toString(),
@@ -17,7 +16,7 @@ fun createGame(): Game {
         timer = 30
     )
     val game = Game(
-        grid = grid,
+        field = grid,
         turn = turn
     )
     return game
@@ -41,4 +40,19 @@ fun GameSession.addNewPlayer(): GameSession {
 fun CellType?.getCode(): Int {
     if (this == null) return Int.MAX_VALUE
     return CellType.entries.indexOf(this)
+}
+
+fun GameSession.setEndStatus(endStatus: EndStatus): GameSession {
+    return copy(game = game.copy(endStatus = endStatus))
+}
+
+fun GameSession.nextTurn(field: Field): GameSession {
+    val newTurn  = Turn(
+        playerId = if (game.turn.playerId == "1") "2" else "1",
+        number = game.turn.number + 1,
+        timer = 30
+    )
+    return copy(
+        game = game.copy(turn = newTurn, field = field)
+    )
 }

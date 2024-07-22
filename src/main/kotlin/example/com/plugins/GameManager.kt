@@ -1,15 +1,15 @@
 package example.com.plugins
 
 import example.com.data.getCode
-import example.com.domain.Cell
 import example.com.domain.CellType
 import example.com.domain.EndStatus
+import example.com.domain.Field
 
 class GameManager {
 
-    private lateinit var field: List<List<Cell>>
+    private lateinit var field: Field
 
-    fun checkForWin(field: List<List<Cell>>): EndStatus? {
+    fun checkForWin(field: Field): EndStatus? {
         this.field = field
         checkColumns()?.let { return EndStatus.Win(it) }
         checkRows()?.let { return EndStatus.Win(it) }

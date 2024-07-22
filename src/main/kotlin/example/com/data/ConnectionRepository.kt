@@ -7,7 +7,7 @@ import kotlin.collections.LinkedHashSet
 class ConnectionRepository {
 
 
-    val connections = Collections.synchronizedSet<Connection?>(LinkedHashSet())
+    private val connections = Collections.synchronizedSet<Connection?>(LinkedHashSet())
 
     fun addSession(connection: Connection) {
         connections.add(connection)

@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Game(
-    val grid: List<List<Cell>>,
+    val field: Field,
     val endStatus: EndStatus? = null,
     val turn: Turn,
 )

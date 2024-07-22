@@ -1,12 +1,11 @@
 package example.com.plugins
 
 import example.com.data.*
-import example.com.domain.Cell
+import example.com.domain.Field
 import example.com.domain.GameSession
 import example.com.domain.Player
 import io.ktor.serialization.kotlinx.*
 import io.ktor.server.application.*
-import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.util.*
@@ -14,12 +13,11 @@ import io.ktor.websocket.*
 import io.ktor.websocket.serialization.*
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.protobuf.ProtoBuf
-import java.nio.charset.Charset
+import kotlinx.serialization.json.decodeFromJsonElement
 import java.time.Duration
-import java.util.*
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.collections.LinkedHashSet
+
+private val gameManager = GameManager()
+private val connectionRepository = ConnectionRepository()
 
 @OptIn(ExperimentalSerializationApi::class, InternalAPI::class)
 fun Application.configureSockets() {
@@ -29,10 +27,10 @@ fun Application.configureSockets() {
         maxFrameSize = Long.MAX_VALUE
         masking = false
 
-        contentConverter = KotlinxWebsocketSerializationConverter(Json)
+        contentConverter = KotlinxWebsocketSerializationConverter(getConverter())
     }
     routing {
-        val connectionRepository = ConnectionRepository()
+
         webSocket("/sessions/new") {
             println("new session")
 
@@ -69,11 +67,7 @@ fun Application.configureSockets() {
             connectionRepository.updateConnection(newConnection, code)
 
             for (session in newConnection.sessions) {
-                session.sendSerializedBase<GameSession>(
-                    charset = Charset.defaultCharset(),
-                    data = newConnection.gameSession,
-                    converter = KotlinxWebsocketSerializationConverter(Json)
-                )
+                session.sendSerializedBase<GameSession>(newConnection.gameSession)
             }
             handleIncomeData(code)
         }
@@ -81,14 +75,25 @@ fun Application.configureSockets() {
 }
 
 
-suspend fun DefaultWebSocketServerSession.handleIncomeData(gameCode: String) {
+suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
     for (frame in incoming) {
-        val field = receiveDeserialized<List<List<Cell>>>()
+        val text = (frame as? Frame.Text)?.readText() ?: continue
+        val field = Json.decodeFromString<Field>(text)
+        println(field)
+        val endStatus = gameManager.checkForWin(field)
+        val connection = connectionRepository.getConnectionBySessionCode(code) ?: continue
 
+        if (endStatus != null) {
+            val newConnection = connection.copy(gameSession = connection.gameSession.setEndStatus(endStatus))
+
+            newConnection.sessions.forEach {
+                it.sendSerializedBase<GameSession>(newConnection.gameSession)
+            }
+        } else {
+            val newConnection = connection.copy(gameSession = connection.gameSession.nextTurn(field))
+            newConnection.sessions.forEach {
+                it.sendSerializedBase<GameSession>(newConnection.gameSession)
+            }
+        }
     }
 }
-
-suspend fun checkForWin(field: List<List<Cell>>) {
-
-}
-
