@@ -17,7 +17,8 @@ fun createGame(): Game {
     )
     val game = Game(
         field = grid,
-        turn = turn
+        turn = turn,
+        gameStatus = GameStatus.Waiting
     )
     return game
 }
@@ -43,16 +44,16 @@ fun CellType?.getCode(): Int {
 }
 
 fun GameSession.setEndStatus(endStatus: EndStatus): GameSession {
-    return copy(game = game.copy(endStatus = endStatus))
+    return copy(game = game.copy(gameStatus = GameStatus.End(endStatus)))
 }
 
-fun GameSession.nextTurn(field: Field): GameSession {
+fun GameSession.nextTurn(game: Game): GameSession {
     val newTurn  = Turn(
         playerId = if (game.turn.playerId == "1") "2" else "1",
         number = game.turn.number + 1,
         timer = 30
     )
     return copy(
-        game = game.copy(turn = newTurn, field = field)
+        game = game.copy(turn = newTurn)
     )
 }

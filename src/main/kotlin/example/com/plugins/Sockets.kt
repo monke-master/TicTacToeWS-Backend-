@@ -2,6 +2,7 @@ package example.com.plugins
 
 import example.com.data.*
 import example.com.domain.Field
+import example.com.domain.Game
 import example.com.domain.GameSession
 import example.com.domain.Player
 import io.ktor.serialization.kotlinx.*
@@ -78,9 +79,10 @@ fun Application.configureSockets() {
 suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
     for (frame in incoming) {
         val text = (frame as? Frame.Text)?.readText() ?: continue
-        val field = Json.decodeFromString<Field>(text)
-        println(field)
-        val endStatus = gameManager.checkForWin(field)
+        println(text)
+        val game = Json.decodeFromString<Game>(text)
+        println(game)
+        val endStatus = gameManager.checkForWin(game.field)
         val connection = connectionRepository.getConnectionBySessionCode(code) ?: continue
 
         if (endStatus != null) {
@@ -90,7 +92,7 @@ suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
                 it.sendSerializedBase<GameSession>(newConnection.gameSession)
             }
         } else {
-            val newConnection = connection.copy(gameSession = connection.gameSession.nextTurn(field))
+            val newConnection = connection.copy(gameSession = connection.gameSession.nextTurn(game))
             newConnection.sessions.forEach {
                 it.sendSerializedBase<GameSession>(newConnection.gameSession)
             }
