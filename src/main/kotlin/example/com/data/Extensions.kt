@@ -8,10 +8,9 @@ fun randomType(): CellType {
 }
 
 fun createGame(): Game {
-    val row = listOf(Cell(CellType.Nought), Cell(null), Cell(null),)
-    val grid = listOf(row, row, row)
+    val grid = EmptyField
     val turn = Turn(
-        playerId = (0..1).random().toString(),
+        playerId = (1..2).random().toString(),
         number = 0,
         timer = 30
     )
@@ -48,6 +47,7 @@ fun GameSession.setEndStatus(endStatus: EndStatus): GameSession {
 }
 
 fun GameSession.nextTurn(game: Game): GameSession {
+    println("Next bebra")
     val newTurn  = Turn(
         playerId = if (game.turn.playerId == "1") "2" else "1",
         number = game.turn.number + 1,

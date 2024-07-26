@@ -1,10 +1,7 @@
 package example.com.plugins
 
 import example.com.data.*
-import example.com.domain.Field
-import example.com.domain.Game
-import example.com.domain.GameSession
-import example.com.domain.Player
+import example.com.domain.*
 import io.ktor.serialization.kotlinx.*
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
@@ -82,20 +79,26 @@ suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
         println(text)
         val game = Json.decodeFromString<Game>(text)
         println(game)
-        val endStatus = gameManager.checkForWin(game.field)
+
         val connection = connectionRepository.getConnectionBySessionCode(code) ?: continue
+        var newConnection: Connection
 
-        if (endStatus != null) {
-            val newConnection = connection.copy(gameSession = connection.gameSession.setEndStatus(endStatus))
+        newConnection = if (connection.gameSession.game.gameStatus == GameStatus.Started) {
+            val endStatus = gameManager.checkForWin(game.field)
 
-            newConnection.sessions.forEach {
-                it.sendSerializedBase<GameSession>(newConnection.gameSession)
+            if (endStatus != null) {
+                connection.copy(gameSession = connection.gameSession.setEndStatus(endStatus))
+
+            } else {
+                connection.copy(gameSession = connection.gameSession.nextTurn(game))
             }
         } else {
-            val newConnection = connection.copy(gameSession = connection.gameSession.nextTurn(game))
-            newConnection.sessions.forEach {
-                it.sendSerializedBase<GameSession>(newConnection.gameSession)
-            }
+            connection.copy(gameSession = connection.gameSession.copy(game = game))
+        }
+
+        connectionRepository.updateConnection(newConnection, code)
+        newConnection.sessions.forEach {
+            it.sendSerializedBase<GameSession>(newConnection.gameSession)
         }
     }
 }
