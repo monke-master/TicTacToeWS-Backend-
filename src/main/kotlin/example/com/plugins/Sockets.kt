@@ -81,14 +81,13 @@ suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
         println(game)
 
         val connection = connectionRepository.getConnectionBySessionCode(code) ?: continue
-        var newConnection: Connection
 
-        newConnection = if (connection.gameSession.game.gameStatus == GameStatus.Started) {
+        val newConnection: Connection = if (connection.gameSession.game.gameStatus == GameStatus.Started) {
             val endStatus = gameManager.checkForWin(game.field)
 
-            if (endStatus != null) {
-                connection.copy(gameSession = connection.gameSession.setEndStatus(endStatus))
 
+            if (endStatus != null) {
+                connection.copy(gameSession = connection.gameSession.setEndStatus(game, endStatus))
             } else {
                 connection.copy(gameSession = connection.gameSession.nextTurn(game))
             }

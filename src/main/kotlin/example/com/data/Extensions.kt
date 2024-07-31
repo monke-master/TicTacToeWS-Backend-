@@ -42,7 +42,10 @@ fun CellType?.getCode(): Int {
     return CellType.entries.indexOf(this)
 }
 
-fun GameSession.setEndStatus(endStatus: EndStatus): GameSession {
+fun GameSession.setEndStatus(
+    game: Game,
+    endStatus: EndStatus
+): GameSession {
     return copy(game = game.copy(gameStatus = GameStatus.End(endStatus)))
 }
 
