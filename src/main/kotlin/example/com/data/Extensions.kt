@@ -60,3 +60,11 @@ fun GameSession.nextTurn(game: Game): GameSession {
         game = game.copy(turn = newTurn)
     )
 }
+
+fun GameSession.restart(): GameSession {
+    return this.copy(game = createGame())
+}
+
+fun GameSession.startGame(): GameSession {
+    return this.copy(game = game.copy(gameStatus = GameStatus.Started))
+}

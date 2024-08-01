@@ -69,6 +69,23 @@ fun Application.configureSockets() {
             }
             handleIncomeData(code)
         }
+
+        post("/sessions/{code}/restart") {
+            val code = call.parameters["code"] ?: return@post
+
+            val connection = connectionRepository.getConnectionBySessionCode(code) ?: return@post
+
+            val newConnection = if (connection.gameSession.game.gameStatus == GameStatus.Waiting) {
+                connection.copy(gameSession = connection.gameSession.startGame())
+            } else {
+                connection.copy(gameSession = connection.gameSession.restart())
+            }
+
+            connectionRepository.updateConnection(newConnection, code)
+            newConnection.sessions.forEach {
+                it.sendSerializedBase<GameSession>(newConnection.gameSession)
+            }
+        }
     }
 }
 
