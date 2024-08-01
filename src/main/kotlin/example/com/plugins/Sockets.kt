@@ -4,6 +4,7 @@ import example.com.data.*
 import example.com.domain.*
 import io.ktor.serialization.kotlinx.*
 import io.ktor.server.application.*
+import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.util.*
@@ -12,7 +13,11 @@ import io.ktor.websocket.serialization.*
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
+import qrcode.QRCode
+import java.io.File
+import java.io.FileOutputStream
 import java.time.Duration
+import javax.imageio.ImageIO
 
 private val gameManager = GameManager()
 private val connectionRepository = ConnectionRepository()
@@ -84,6 +89,20 @@ fun Application.configureSockets() {
             connectionRepository.updateConnection(newConnection, code)
             newConnection.sessions.forEach {
                 it.sendSerializedBase<GameSession>(newConnection.gameSession)
+            }
+        }
+
+        get("/qr/generate") {
+            try {
+                val code = call.parameters["code"] ?: return@get
+
+                val helloWorld = QRCode.ofSquares()
+                    .build(code)
+
+                val pngBytes = helloWorld.render()
+                call.respond(pngBytes.getBytes())
+            } catch (e: Exception) {
+                call.respond(400)
             }
         }
     }
