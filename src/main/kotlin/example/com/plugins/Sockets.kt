@@ -10,6 +10,8 @@ import io.ktor.server.websocket.*
 import io.ktor.util.*
 import io.ktor.websocket.*
 import io.ktor.websocket.serialization.*
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.isActive
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -54,7 +56,7 @@ fun Application.configureSockets() {
             )
             connectionRepository.addSession(connection)
 
-            sendSerialized(gameSession)
+            sendSerializedBase<ServerResponse>(ServerResponse.Success(gameSession))
 
             handleIncomeData(gameSession.code)
         }
@@ -70,7 +72,7 @@ fun Application.configureSockets() {
             connectionRepository.updateConnection(newConnection, code)
 
             for (session in newConnection.sessions) {
-                session.sendSerializedBase<GameSession>(newConnection.gameSession)
+                session.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
             }
             handleIncomeData(code)
         }
@@ -88,7 +90,7 @@ fun Application.configureSockets() {
 
             connectionRepository.updateConnection(newConnection, code)
             newConnection.sessions.forEach {
-                it.sendSerializedBase<GameSession>(newConnection.gameSession)
+                it.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
             }
         }
 
@@ -110,30 +112,62 @@ fun Application.configureSockets() {
 
 
 suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
-    for (frame in incoming) {
-        val text = (frame as? Frame.Text)?.readText() ?: continue
-        println(text)
-        val game = Json.decodeFromString<Game>(text)
-        println(game)
+    try {
+        for (frame in incoming) {
+            println(frame)
+            val text = (frame as? Frame.Text)?.readText() ?: continue
+            println(text)
+            val game = Json.decodeFromString<Game>(text)
+            println(game)
 
-        val connection = connectionRepository.getConnectionBySessionCode(code) ?: continue
+            val connection = connectionRepository.getConnectionBySessionCode(code) ?: continue
 
-        val newConnection: Connection = if (connection.gameSession.game.gameStatus == GameStatus.Started) {
-            val endStatus = gameManager.checkForWin(game.field)
+            val newConnection: Connection = if (connection.gameSession.game.gameStatus == GameStatus.Started) {
+                val endStatus = gameManager.checkForWin(game.field)
 
-
-            if (endStatus != null) {
-                connection.copy(gameSession = connection.gameSession.setEndStatus(game, endStatus))
+                if (endStatus != null) {
+                    connection.copy(gameSession = connection.gameSession.setEndStatus(game, endStatus))
+                } else {
+                    connection.copy(gameSession = connection.gameSession.nextTurn(game))
+                }
             } else {
-                connection.copy(gameSession = connection.gameSession.nextTurn(game))
+                connection.copy(gameSession = connection.gameSession.copy(game = game))
             }
-        } else {
-            connection.copy(gameSession = connection.gameSession.copy(game = game))
-        }
 
-        connectionRepository.updateConnection(newConnection, code)
-        newConnection.sessions.forEach {
-            it.sendSerializedBase<GameSession>(newConnection.gameSession)
+            connectionRepository.updateConnection(newConnection, code)
+            newConnection.sessions.forEach {
+                it.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
+            }
+        }
+    } catch (e: ClosedReceiveChannelException) {
+        onOpponentLeft(code)
+        println("onClose ${closeReason.await()}")
+    } catch (e: Throwable) {
+        val connection = connectionRepository.getConnectionBySessionCode(code) ?: return
+        connection.sessions.forEach {
+            if (it.isActive) {
+                it.sendSerializedBase<ServerResponse>(ServerResponse.Error("Да сами хз бля"))
+            }
+        }
+        println("onClose ${closeReason.await()}")
+        println("onError ${closeReason.await()}")
+        e.printStackTrace()
+    }
+
+    closeReason.await()?.let {
+        println("CLOSED MUTHERFUCKER")
+        onOpponentLeft(code)
+    }
+}
+
+private suspend fun onOpponentLeft(code: String) {
+    val connection = connectionRepository.getConnectionBySessionCode(code) ?: return
+    connection.sessions.forEach {
+        println("MALAHOVV")
+        try {
+            it.sendSerializedBase<ServerResponse>(ServerResponse.Error(OpponentLeftException().localizedMessage))
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }
