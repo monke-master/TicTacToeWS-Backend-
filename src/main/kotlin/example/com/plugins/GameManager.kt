@@ -61,7 +61,7 @@ class GameManager {
     }
 
     private fun checkForDraw(): Boolean {
-        return field.flatten().count { it.type != null } == field.size*field.size - 1
+        return field.flatten().count { it.type != null } == field.size*field.size
     }
 
 }

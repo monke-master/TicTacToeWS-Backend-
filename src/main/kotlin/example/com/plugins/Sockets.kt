@@ -27,8 +27,8 @@ private val connectionRepository = ConnectionRepository()
 @OptIn(ExperimentalSerializationApi::class, InternalAPI::class)
 fun Application.configureSockets() {
     install(WebSockets) {
-        pingPeriod = Duration.ofSeconds(15)
-        timeout = Duration.ofSeconds(15)
+        pingPeriod = Duration.ofSeconds(150)
+        timeout = Duration.ofSeconds(150)
         maxFrameSize = Long.MAX_VALUE
         masking = false
 
@@ -37,6 +37,7 @@ fun Application.configureSockets() {
     routing {
 
         webSocket("/sessions/new") {
+            val deviceId = call.parameters["did"] ?: return@webSocket
             println("new session")
 
             val player = Player(
@@ -50,8 +51,9 @@ fun Application.configureSockets() {
                 code = generateCode().uppercase()
             )
 
+            val deviceSession = DeviceSession(deviceId, this)
             val connection = Connection(
-                sessions = listOf(this),
+                sessions = listOf(deviceSession),
                 gameSession = gameSession
             )
             connectionRepository.addSession(connection)
@@ -63,16 +65,23 @@ fun Application.configureSockets() {
 
         webSocket("/sessions/{code}") {
             val code = call.parameters["code"] ?: return@webSocket
+            val deviceId = call.parameters["did"] ?: return@webSocket
 
             val connection = connectionRepository.getConnectionBySessionCode(code) ?: return@webSocket
-            val newConnection = connection.copy(
-                sessions = connection.sessions + this,
-                gameSession = connection.gameSession.addNewPlayer()
-            )
-            connectionRepository.updateConnection(newConnection, code)
+            val session = connection.sessions.find { it.deviceId == deviceId }
+            if (session != null) {
+                reconnectSession(connection, session)
+            } else {
+                val deviceSession = DeviceSession(deviceId, this)
+                val newConnection = connection.copy(
+                    sessions = connection.sessions + deviceSession,
+                    gameSession = connection.gameSession.addNewPlayer()
+                )
+                connectionRepository.updateConnection(newConnection, code)
 
-            for (session in newConnection.sessions) {
-                session.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
+                for (session in newConnection.sessions) {
+                    session.wsSession.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
+                }
             }
             handleIncomeData(code)
         }
@@ -90,7 +99,7 @@ fun Application.configureSockets() {
 
             connectionRepository.updateConnection(newConnection, code)
             newConnection.sessions.forEach {
-                it.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
+                it.wsSession.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
             }
         }
 
@@ -131,12 +140,13 @@ suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
                     connection.copy(gameSession = connection.gameSession.nextTurn(game))
                 }
             } else {
+                println("STARTING GAME")
                 connection.copy(gameSession = connection.gameSession.copy(game = game))
             }
 
             connectionRepository.updateConnection(newConnection, code)
             newConnection.sessions.forEach {
-                it.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
+                it.wsSession.sendSerializedBase<ServerResponse>(ServerResponse.Success(newConnection.gameSession))
             }
         }
     } catch (e: ClosedReceiveChannelException) {
@@ -145,8 +155,8 @@ suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
     } catch (e: Throwable) {
         val connection = connectionRepository.getConnectionBySessionCode(code) ?: return
         connection.sessions.forEach {
-            if (it.isActive) {
-                it.sendSerializedBase<ServerResponse>(ServerResponse.Error("Да сами хз бля"))
+            if (it.wsSession.isActive) {
+                it.wsSession.sendSerializedBase<ServerResponse>(ServerResponse.Error("Да сами хз бля"))
             }
         }
         println("onClose ${closeReason.await()}")
@@ -160,12 +170,24 @@ suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
     }
 }
 
+private suspend fun DefaultWebSocketServerSession.reconnectSession(connection: Connection, session: DeviceSession) {
+    // session.wsSession.close()
+    val newSession = session.copy(wsSession = this)
+    val sessionsList = connection.sessions.toMutableList()
+
+    sessionsList.remove(session)
+    sessionsList += newSession
+
+    connectionRepository.updateConnection(connection.copy(sessions = sessionsList), connection.gameSession.code)
+    println("Reconnected")
+}
+
 private suspend fun onOpponentLeft(code: String) {
     val connection = connectionRepository.getConnectionBySessionCode(code) ?: return
     connection.sessions.forEach {
         println("MALAHOVV")
         try {
-            it.sendSerializedBase<ServerResponse>(ServerResponse.Error(OpponentLeftException().localizedMessage))
+            it.wsSession.sendSerializedBase<ServerResponse>(ServerResponse.Error(OpponentLeftException().localizedMessage))
         } catch (e: Exception) {
             e.printStackTrace()
         }
