@@ -12,6 +12,7 @@ import io.ktor.websocket.*
 import io.ktor.websocket.serialization.*
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -27,8 +28,8 @@ private val connectionRepository = ConnectionRepository()
 @OptIn(ExperimentalSerializationApi::class, InternalAPI::class)
 fun Application.configureSockets() {
     install(WebSockets) {
-        pingPeriod = Duration.ofSeconds(150)
-        timeout = Duration.ofSeconds(150)
+        pingPeriod = Duration.ofSeconds(10)
+        timeout = Duration.ofSeconds(30)
         maxFrameSize = Long.MAX_VALUE
         masking = false
 
@@ -156,7 +157,7 @@ suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
         val connection = connectionRepository.getConnectionBySessionCode(code) ?: return
         connection.sessions.forEach {
             if (it.wsSession.isActive) {
-                it.wsSession.sendSerializedBase<ServerResponse>(ServerResponse.Error("Да сами хз бля"))
+                it.wsSession.sendSerializedBase<ServerResponse>(ServerResponse.Error("Error"))
             }
         }
         println("onClose ${closeReason.await()}")
@@ -165,13 +166,15 @@ suspend fun DefaultWebSocketServerSession.handleIncomeData(code: String) {
     }
 
     closeReason.await()?.let {
-        println("CLOSED MUTHERFUCKER")
-        onOpponentLeft(code)
+        if (it.code == CloseReason.Codes.NORMAL.code) {
+            println("CLOSED MUTHERFUCKER")
+            onOpponentLeft(code)
+        }
     }
 }
 
 private suspend fun DefaultWebSocketServerSession.reconnectSession(connection: Connection, session: DeviceSession) {
-    // session.wsSession.close()
+    session.wsSession.close(CloseReason(CloseReason.Codes.SERVICE_RESTART, "reconnected"))
     val newSession = session.copy(wsSession = this)
     val sessionsList = connection.sessions.toMutableList()
 
